@@ -40,7 +40,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# OpenAPI 3.0.3 스키마 설정
+# OpenAPI 3.0.3 스키마 설정 (ClovaStudio 호환)
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -62,6 +62,22 @@ def custom_openapi():
             "description": "Yahoo Finance API Server"
         }
     ]
+    
+    # ClovaStudio 호환성을 위해 examples 속성 제거
+    def remove_examples(schema_dict):
+        if isinstance(schema_dict, dict):
+            # examples 속성 제거
+            if 'examples' in schema_dict:
+                del schema_dict['examples']
+            # 중첩된 객체에서도 재귀적으로 제거
+            for key, value in schema_dict.items():
+                remove_examples(value)
+        elif isinstance(schema_dict, list):
+            for item in schema_dict:
+                remove_examples(item)
+    
+    # 전체 스키마에서 examples 제거
+    remove_examples(openapi_schema)
     
     app.openapi_schema = openapi_schema
     return app.openapi_schema

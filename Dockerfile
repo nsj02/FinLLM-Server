@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY server.py .
 COPY models.py .
 COPY routes/ ./routes/
+COPY utils/ ./utils/
 
 # 환경변수 설정
 ENV PYTHONPATH=/app

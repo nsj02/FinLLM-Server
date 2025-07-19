@@ -18,6 +18,7 @@ COPY server.py .
 COPY models.py .
 COPY routes/ ./routes/
 COPY utils/ ./utils/
+COPY debug_api.py .
 
 # 환경변수 설정
 ENV PYTHONPATH=/app

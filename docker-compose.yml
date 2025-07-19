@@ -6,44 +6,11 @@ services:
       dockerfile: Dockerfile
     container_name: finllm-api-server
     environment:
-      DATABASE_URL: postgresql://postgres:password@findb-timescaledb:5432/finance_db
-      API_SERVER_URL: http://localhost:8000
+      DATABASE_URL: postgresql://postgres:password@211.188.57.245:5432/finance_db
+      API_SERVER_URL: http://0.0.0.0:8000
       PYTHONUNBUFFERED: 1
     ports:
       - "8000:8000"
-    networks:
-      - finllm-network
     restart: unless-stopped
-    depends_on:
-      - findb-timescaledb
     volumes:
       - ./logs:/app/logs
-
-  # FinDB TimescaleDB (외부 FinDB 프로젝트 참조)
-  findb-timescaledb:
-    image: timescale/timescaledb:latest-pg15
-    container_name: findb-timescaledb
-    environment:
-      POSTGRES_DB: finance_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      TIMESCALEDB_TELEMETRY: off
-    volumes:
-      - timescale_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    networks:
-      - finllm-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-volumes:
-  timescale_data:
-
-networks:
-  finllm-network:
-    driver: bridge

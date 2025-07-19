@@ -2,6 +2,7 @@
 # debug_api.py - API 디버깅 스크립트
 
 from models import SessionLocal, Stock, DailyPrice, MarketStat
+from sqlalchemy import text
 from datetime import datetime, date
 
 def test_db_connection():
@@ -9,7 +10,7 @@ def test_db_connection():
     db = SessionLocal()
     try:
         # 1. 테이블 존재 확인
-        tables = db.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public'").fetchall()
+        tables = db.execute(text("SELECT table_name FROM information_schema.tables WHERE table_schema='public'")).fetchall()
         print("존재하는 테이블:", [t[0] for t in tables])
         
         # 2. stocks 테이블 확인

@@ -59,7 +59,7 @@ def custom_openapi():
     # 서버 정보 - 환경변수로 설정
     openapi_schema["servers"] = [
         {
-            "url": os.getenv("API_SERVER_URL", "http://49.50.133.71:8000"),
+            "url": "http://49.50.133.71:8000",
             "description": "Yahoo Finance API Server"
         }
     ]
@@ -130,7 +130,7 @@ def get_basic_openapi():
     )
     
     schema["openapi"] = "3.0.3"
-    schema["servers"] = [{"url": os.getenv("API_SERVER_URL", "http://49.50.133.71:8000")}]
+    schema["servers"] = [{"url": "http://49.50.133.71:8000"}]
     
     # examples 제거
     def remove_examples(schema_dict):
@@ -167,7 +167,7 @@ def get_enhanced_openapi():
     )
     
     schema["openapi"] = "3.0.3"
-    schema["servers"] = [{"url": os.getenv("API_SERVER_URL", "http://49.50.133.71:8000")}]
+    schema["servers"] = [{"url": "http://49.50.133.71:8000"}]
     
     def remove_examples(schema_dict):
         if isinstance(schema_dict, dict):
@@ -203,7 +203,7 @@ def get_technical_openapi():
     )
     
     schema["openapi"] = "3.0.3"
-    schema["servers"] = [{"url": os.getenv("API_SERVER_URL", "http://49.50.133.71:8000")}]
+    schema["servers"] = [{"url": "http://49.50.133.71:8000"}]
     
     def remove_examples(schema_dict):
         if isinstance(schema_dict, dict):
@@ -239,7 +239,7 @@ def get_filters_openapi():
     )
     
     schema["openapi"] = "3.0.3"
-    schema["servers"] = [{"url": os.getenv("API_SERVER_URL", "http://49.50.133.71:8000")}]
+    schema["servers"] = [{"url": "http://49.50.133.71:8000"}]
     
     def remove_examples(schema_dict):
         if isinstance(schema_dict, dict):
@@ -275,7 +275,7 @@ def get_simple_openapi():
     )
     
     schema["openapi"] = "3.0.3"
-    schema["servers"] = [{"url": os.getenv("API_SERVER_URL", "http://49.50.133.71:8000")}]
+    schema["servers"] = [{"url": "http://49.50.133.71:8000"}]
     
     def remove_examples(schema_dict):
         if isinstance(schema_dict, dict):
@@ -311,7 +311,7 @@ def get_filter_openapi():
     )
     
     schema["openapi"] = "3.0.3"
-    schema["servers"] = [{"url": os.getenv("API_SERVER_URL", "http://49.50.133.71:8000")}]
+    schema["servers"] = [{"url": "http://49.50.133.71:8000"}]
     
     def remove_examples(schema_dict):
         if isinstance(schema_dict, dict):
@@ -347,7 +347,7 @@ def get_signal_openapi():
     )
     
     schema["openapi"] = "3.0.3"
-    schema["servers"] = [{"url": os.getenv("API_SERVER_URL", "http://49.50.133.71:8000")}]
+    schema["servers"] = [{"url": "http://49.50.133.71:8000"}]
     
     def remove_examples(schema_dict):
         if isinstance(schema_dict, dict):

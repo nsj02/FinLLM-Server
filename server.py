@@ -10,6 +10,7 @@ from routes.basic import router as basic_router
 from routes.enhanced import router as enhanced_router
 from routes.technical import router as technical_router
 from routes.filters import router as filters_router
+from routes.query import router as query_router
 
 # ==============================================================================
 # 1. Pydantic 응답 모델(Response Models)
@@ -99,6 +100,9 @@ app.include_router(technical_router, tags=["Technical Analysis"])
 
 # 필터링 라우터
 app.include_router(filters_router, tags=["Filters"])
+
+# 통합 쿼리 라우터 (신규)
+app.include_router(query_router, tags=["Query"])
 
 # ==============================================================================
 # 4. 기능별 OpenAPI JSON 엔드포인트
@@ -232,6 +236,114 @@ def get_filters_openapi():
         version=temp_app.version,
         description=temp_app.description,
         routes=temp_app.routes,
+    )
+    
+    schema["openapi"] = "3.0.3"
+    schema["servers"] = [{"url": os.getenv("API_SERVER_URL", "http://localhost:8000")}]
+    
+    def remove_examples(schema_dict):
+        if isinstance(schema_dict, dict):
+            if 'examples' in schema_dict:
+                del schema_dict['examples']
+            for value in schema_dict.values():
+                remove_examples(value)
+        elif isinstance(schema_dict, list):
+            for item in schema_dict:
+                remove_examples(item)
+    
+    remove_examples(schema)
+    return schema
+
+@app.get("/openapi_simple.json")
+def get_simple_openapi():
+    """간단 조회 API만 포함하는 OpenAPI 스키마"""
+    from fastapi.openapi.utils import get_openapi
+    from fastapi import FastAPI
+    
+    temp_app = FastAPI(
+        title="간단 조회 API",
+        description="한국 주식 간단 조회 (개별 종목, 시장 통계, 순위)",
+        version="1.0.0"
+    )
+    temp_app.include_router(query_router, tags=["Simple"])
+    
+    schema = get_openapi(
+        title=temp_app.title,
+        version=temp_app.version,
+        description=temp_app.description,
+        routes=[route for route in temp_app.routes if hasattr(route, 'path') and route.path == '/query/simple'],
+    )
+    
+    schema["openapi"] = "3.0.3"
+    schema["servers"] = [{"url": os.getenv("API_SERVER_URL", "http://localhost:8000")}]
+    
+    def remove_examples(schema_dict):
+        if isinstance(schema_dict, dict):
+            if 'examples' in schema_dict:
+                del schema_dict['examples']
+            for value in schema_dict.values():
+                remove_examples(value)
+        elif isinstance(schema_dict, list):
+            for item in schema_dict:
+                remove_examples(item)
+    
+    remove_examples(schema)
+    return schema
+
+@app.get("/openapi_filter.json")
+def get_filter_openapi():
+    """조건 검색 API만 포함하는 OpenAPI 스키마"""
+    from fastapi.openapi.utils import get_openapi
+    from fastapi import FastAPI
+    
+    temp_app = FastAPI(
+        title="조건 검색 API",
+        description="한국 주식 조건 검색 (복합 조건 필터링)",
+        version="1.0.0"
+    )
+    temp_app.include_router(query_router, tags=["Filter"])
+    
+    schema = get_openapi(
+        title=temp_app.title,
+        version=temp_app.version,
+        description=temp_app.description,
+        routes=[route for route in temp_app.routes if hasattr(route, 'path') and route.path == '/query/filter'],
+    )
+    
+    schema["openapi"] = "3.0.3"
+    schema["servers"] = [{"url": os.getenv("API_SERVER_URL", "http://localhost:8000")}]
+    
+    def remove_examples(schema_dict):
+        if isinstance(schema_dict, dict):
+            if 'examples' in schema_dict:
+                del schema_dict['examples']
+            for value in schema_dict.values():
+                remove_examples(value)
+        elif isinstance(schema_dict, list):
+            for item in schema_dict:
+                remove_examples(item)
+    
+    remove_examples(schema)
+    return schema
+
+@app.get("/openapi_signal.json")
+def get_signal_openapi():
+    """기술적 신호 API만 포함하는 OpenAPI 스키마"""
+    from fastapi.openapi.utils import get_openapi
+    from fastapi import FastAPI
+    
+    temp_app = FastAPI(
+        title="기술적 신호 API",
+        description="한국 주식 기술적 신호 (RSI, 볼린저밴드, 거래량 급증 등)",
+        version="1.0.0"
+    )
+    temp_app.include_router(query_router, tags=["Signal"])
+    
+    schema = get_openapi(
+        title=temp_app.title,
+        version=temp_app.version,
+        description=temp_app.description,
+        routes=[route for route in temp_app.routes if hasattr(route, 'path') and route.path == '/query/signal'],
     )
     
     schema["openapi"] = "3.0.3"

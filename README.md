@@ -1,6 +1,8 @@
 # FinLLM-Server
 
-FinDB 데이터베이스를 활용한 금융 데이터 API 서버입니다.
+한국 주식시장 전문 API 서버 (2,757개 종목 지원)
+
+FinDB 데이터베이스를 활용한 실시간 금융 데이터 API 서버입니다.
 
 ## 🚀 빠른 시작
 
@@ -37,25 +39,46 @@ docker-compose up -d
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
-## 🔧 주요 엔드포인트
+## 🤖 ClovaStudio 스킬셋 연동
 
-### 주식 데이터
-- `GET /stock/history?ticker=005930.KS&days=30` - 주가 이력 조회
-- `GET /stock/info?ticker=005930.KS` - 주식 정보 조회
-- `GET /stock/actions?ticker=005930.KS` - 주식 활동 조회
-- `GET /stock/financials?ticker=005930.KS&financial_type=income_stmt` - 재무제표 조회
-- `GET /stock/holders?ticker=005930.KS&holder_type=major_holders` - 주주 정보 조회
-- `GET /stock/recommendations?ticker=005930.KS` - 애널리스트 추천 조회
+네이버 ClovaStudio와 연동을 위한 기능별 OpenAPI 스키마를 제공합니다:
 
-### 지원 종목
-- 삼성전자: 005930.KS
-- SK하이닉스: 000660.KS
-- NAVER: 035420.KS
-- 카카오: 035720.KS
-- POSCO홀딩스: 005490.KS
-- 카카오게임즈: 293490.KQ
-- 크래프톤: 259960.KQ
-- 셀트리온: 068270.KQ
+### 기능별 OpenAPI JSON 엔드포인트
+- `/openapi_basic.json` - 기본 주식 조회 (종목 정보, 가격 데이터, 검색)
+- `/openapi_enhanced.json` - 고급 기능 (시장 데이터, 순위, 통계)
+- `/openapi_technical.json` - 기술적 분석 (RSI, 볼린저밴드, 골든크로스)
+- `/openapi_filters.json` - 필터링 (가격대, 거래량, RSI 등)
+
+### ClovaStudio 스킬셋 등록 방법
+1. 각 기능별 OpenAPI JSON URL을 스킬셋 등록 시 사용
+2. 예시: `http://49.50.133.71:8000/openapi_basic.json`
+3. 토큰 수 최적화를 위해 examples 속성 제거됨
+
+## 🔧 주요 기능
+
+### 1. 기본 주식 조회 (Basic)
+- 개별 종목 정보 조회
+- 종목 검색
+- 가격 히스토리
+
+### 2. 고급 기능 (Enhanced)  
+- 시장 통계
+- 종목 순위
+- 거래량 분석
+
+### 3. 기술적 분석 (Technical)
+- RSI, 볼린저밴드, MACD
+- 골든크로스/데드크로스 시그널
+- 매매 신호
+
+### 4. 필터링 (Filters)
+- 가격대별 필터링
+- 거래량 조건 필터링
+- 기술적 지표 조건 필터링
+
+### 지원 종목 (2,757개)
+- **KOSPI**: 삼성전자(005930.KS), SK하이닉스(000660.KS), NAVER(035420.KS) 등
+- **KOSDAQ**: 카카오게임즈(293490.KQ), 크래프톤(259960.KQ), 셀트리온(068270.KQ) 등
 
 ## 🏗️ 기술 스택
 

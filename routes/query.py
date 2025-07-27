@@ -369,15 +369,102 @@ def conditional_query(
 
 @router.get("/query/signal", summary="기술적 신호 (Signal Queries)")
 def signal_query(
-    date: str = Query(..., description="조회 날짜 (YYYY-MM-DD)", examples=["2025-01-20"]),
+    # 기본 파라미터
+    date: Optional[str] = Query(None, description="조회 날짜 (YYYY-MM-DD)", examples=["2025-01-20"]),
     signal_type: str = Query(..., description="신호 유형", examples=["rsi_overbought"]),
-    threshold: Optional[float] = Query(None, description="임계값", examples=[70]),
+    
+    # RSI 관련
+    threshold: Optional[float] = Query(None, description="RSI/기타 임계값", examples=[70]),
+    
+    # 거래량 급증 관련
+    volume_multiplier: Optional[float] = Query(None, description="거래량 배수 (예: 5.0 = 500%)", examples=[5.0]),
+    
+    # 이동평균 관련
+    ma_period: Optional[int] = Query(None, description="이동평균 기간", examples=[20]),
+    breakout_percent: Optional[float] = Query(None, description="돌파 비율 (%)", examples=[3.0]),
+    
+    # 기간 관련
     period: int = Query(20, description="기간 (일)", examples=[20]),
     limit: int = Query(15, description="조회 개수", examples=[15]),
+    
+    # 크로스 신호용 파라미터
+    stock: Optional[str] = Query(None, description="특정 종목 (크로스 횟수 조회용)", examples=["현대백화점"]),
+    start_date: Optional[str] = Query(None, description="시작 날짜 (크로스 횟수 조회용)", examples=["2024-06-01"]),
+    end_date: Optional[str] = Query(None, description="종료 날짜 (크로스 횟수 조회용)", examples=["2025-06-30"]),
+    
     db: SQLSession = Depends(get_db)
 ):
     """Signal Queries 처리 - 기술적 분석 신호"""
     try:
+        # 크로스 횟수 조회 (특정 종목 + 기간)
+        if signal_type.endswith("_count") and stock and start_date and end_date:
+            stock_obj = find_stock_by_name(db, stock)
+            if not stock_obj:
+                raise HTTPException(status_code=404, detail=f"종목을 찾을 수 없습니다: {stock}")
+            
+            start_dt = parse_date(start_date).date()
+            end_dt = parse_date(end_date).date()
+            
+            # 기술적 지표 데이터 조회 (기간 내)
+            tech_data = db.query(TechnicalIndicator).filter(
+                TechnicalIndicator.stock_id == stock_obj.stock_id,
+                TechnicalIndicator.date >= start_dt,
+                TechnicalIndicator.date <= end_dt,
+                TechnicalIndicator.ma5.isnot(None),
+                TechnicalIndicator.ma20.isnot(None)
+            ).order_by(TechnicalIndicator.date).all()
+            
+            golden_cross_count = 0
+            dead_cross_count = 0
+            
+            for i in range(1, len(tech_data)):
+                prev = tech_data[i-1]
+                curr = tech_data[i]
+                
+                # 골든크로스: 5일선이 20일선을 상향 돌파
+                if prev.ma5 <= prev.ma20 and curr.ma5 > curr.ma20:
+                    golden_cross_count += 1
+                
+                # 데드크로스: 5일선이 20일선을 하향 돌파
+                if prev.ma5 >= prev.ma20 and curr.ma5 < curr.ma20:
+                    dead_cross_count += 1
+            
+            if signal_type == "golden_cross_count":
+                return {
+                    "query_type": "signal_count",
+                    "stock": stock,
+                    "signal_type": signal_type,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "count": golden_cross_count,
+                    "formatted_answer": f"{golden_cross_count}번"
+                }
+            elif signal_type == "dead_cross_count":
+                return {
+                    "query_type": "signal_count", 
+                    "stock": stock,
+                    "signal_type": signal_type,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "count": dead_cross_count,
+                    "formatted_answer": f"{dead_cross_count}번"
+                }
+            else:  # 통합 (데드크로스 + 골든크로스)
+                return {
+                    "query_type": "signal_count",
+                    "stock": stock,
+                    "signal_type": signal_type,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "dead_cross": dead_cross_count,
+                    "golden_cross": golden_cross_count,
+                    "formatted_answer": f"데드크로스 {dead_cross_count}번, 골든크로스 {golden_cross_count}번"
+                }
+        
+        # 일반 신호 조회 (날짜 필수)
+        if not date:
+            raise HTTPException(status_code=400, detail="date parameter required for signal detection")
+        
         query_date = parse_date(date).date()
         
         if signal_type.startswith("rsi_"):
@@ -391,12 +478,12 @@ def signal_query(
             )
             
             if signal_type == "rsi_overbought":
-                threshold = threshold or 70
-                query = base_query.filter(TechnicalIndicator.rsi >= threshold)
+                threshold_val = threshold or 70
+                query = base_query.filter(TechnicalIndicator.rsi >= threshold_val)
                 order_by = desc(TechnicalIndicator.rsi)
             elif signal_type == "rsi_oversold":
-                threshold = threshold or 30
-                query = base_query.filter(TechnicalIndicator.rsi <= threshold)
+                threshold_val = threshold or 30
+                query = base_query.filter(TechnicalIndicator.rsi <= threshold_val)
                 order_by = asc(TechnicalIndicator.rsi)
             
             results = query.order_by(order_by).limit(limit).all()
@@ -413,10 +500,9 @@ def signal_query(
             answer_list = [item["formatted"] for item in formatted_results]
             
         elif signal_type == "volume_surge":
-            # 거래량 급증 신호 (20일 평균 대비)
-            threshold = threshold or 100
+            # 거래량 급증 신호
+            multiplier = volume_multiplier or 1.0
             
-            # 현재 날짜 데이터
             current_query = db.query(DailyPrice, Stock).join(
                 Stock, DailyPrice.stock_id == Stock.stock_id
             ).filter(
@@ -433,11 +519,11 @@ def signal_query(
                     DailyPrice.date >= query_date - timedelta(days=period)
                 ).all()
                 
-                if len(avg_volume_query) >= 10:  # 최소 10일 데이터
+                if len(avg_volume_query) >= 10:
                     avg_volume = sum(p.volume for p in avg_volume_query) / len(avg_volume_query)
                     if avg_volume > 0:
                         surge_ratio = (current_price.volume / avg_volume) * 100
-                        if surge_ratio >= threshold:
+                        if surge_ratio >= multiplier * 100:
                             results.append({
                                 "name": stock.name,
                                 "symbol": stock.symbol,
@@ -445,15 +531,13 @@ def signal_query(
                                 "formatted": f"{stock.name}({surge_ratio:.0f}%)"
                             })
             
-            # 급증률 기준 정렬
             results.sort(key=lambda x: x["surge_ratio"], reverse=True)
             results = results[:limit]
-            
             formatted_results = results
             answer_list = [item["formatted"] for item in results]
             
         elif signal_type.startswith("bollinger_"):
-            # 볼린저 밴드 신호
+            # 볼린저밴드 신호
             base_query = db.query(TechnicalIndicator, Stock).join(
                 Stock, TechnicalIndicator.stock_id == Stock.stock_id
             ).filter(
@@ -468,7 +552,6 @@ def signal_query(
                 query = base_query.filter(TechnicalIndicator.bb_lower_touch == True)
             
             results = query.limit(limit).all()
-            
             formatted_results = []
             for tech, stock in results:
                 formatted_results.append({
@@ -479,12 +562,11 @@ def signal_query(
             
             answer_list = [item["name"] for item in formatted_results]
             
-        elif signal_type.startswith("ma") and "돌파" in signal_type:
+        elif signal_type == "ma_breakout":
             # 이동평균선 돌파 신호
-            ma_period = int(signal_type.replace("ma", "").replace("돌파", ""))
-            threshold = threshold or 3  # 기본 3% 이상
+            ma_period_val = ma_period or 20
+            breakout_percent_val = breakout_percent or 3.0
             
-            # 현재 날짜의 기술적 지표와 가격 데이터 조인
             query = db.query(TechnicalIndicator, DailyPrice, Stock).join(
                 DailyPrice, and_(
                     TechnicalIndicator.stock_id == DailyPrice.stock_id,
@@ -500,16 +582,16 @@ def signal_query(
             results = []
             for tech, price, stock in query.all():
                 ma_value = None
-                if ma_period == 5:
+                if ma_period_val == 5:
                     ma_value = tech.ma5
-                elif ma_period == 20:
+                elif ma_period_val == 20:
                     ma_value = tech.ma20
-                elif ma_period == 60:
+                elif ma_period_val == 60:
                     ma_value = tech.ma60
                 
                 if ma_value and price.close_price:
                     deviation = ((price.close_price - ma_value) / ma_value) * 100
-                    if deviation >= threshold:
+                    if deviation >= breakout_percent_val:
                         results.append({
                             "name": stock.name,
                             "symbol": stock.symbol,
@@ -517,10 +599,8 @@ def signal_query(
                             "formatted": f"{stock.name}({deviation:.2f}%)"
                         })
             
-            # 돌파율 기준 정렬
             results.sort(key=lambda x: x["deviation"], reverse=True)
             results = results[:limit]
-            
             formatted_results = results
             answer_list = [item["formatted"] for item in results]
             
@@ -532,6 +612,7 @@ def signal_query(
             "date": date,
             "signal_type": signal_type,
             "threshold": threshold,
+            "volume_multiplier": volume_multiplier,
             "results": formatted_results,
             "formatted_answer": ", ".join(answer_list) if answer_list else "조건에 맞는 종목 없음"
         }

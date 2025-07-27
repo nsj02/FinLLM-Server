@@ -549,7 +549,7 @@ def signal_query(
                     avg_volume = sum(p.volume for p in avg_volume_query) / len(avg_volume_query)
                     if avg_volume > 0:
                         surge_ratio = (current_price.volume / avg_volume) * 100
-                        if surge_ratio >= multiplier * 100:  # multiplier를 퍼센트로 변환
+                        if surge_ratio >= multiplier * 100:  # multiplier를 퍼센트로 변환 (5.0 = 500%)
                             results.append({
                                 "name": stock.name,
                                 "symbol": stock.symbol,

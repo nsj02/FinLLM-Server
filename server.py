@@ -173,24 +173,51 @@ def get_filter_openapi():
     
     temp_app = FastAPI(
         title="한국 주식 조건검색 필터 API",
-        description="""복합 조건으로 종목 필터링 API
+        description="""이 API는 한국 주식시장에서 여러 조건을 동시에 만족하는 종목을 검색하는 단일 엔드포인트를 제공합니다.
 
-필수 파라미터:
-- date: 조회날짜 (YYYY-MM-DD)
+== 엔드포인트 ==
+GET /query/filter
 
-선택 파라미터:
-- change_rate_min: 등락률 최소값 (%)
-- volume_change_min: 거래량 전날대비 증가율 (%)
-- volume_min: 최소 거래량 (주)
-- price_min: 최소 종가 (원)
-- price_max: 최대 종가 (원)
+== 필수 파라미터 ==
+- date: 조회날짜 (YYYY-MM-DD 형식, 예: 2024-09-25)
 
-사용 예시:
-- "5% 상승한 종목" → change_rate_min=5
-- "거래량 300% 증가한 종목" → volume_change_min=300
-- "5% 상승하고 거래량 300% 증가한 종목" → change_rate_min=5&volume_change_min=300
+== 선택 파라미터 (복합 조건 지원) ==
+1. 등락률 조건:
+   - change_rate_min: 등락률 최소값 (%, 예: 5 = 5% 이상 상승)
+   - change_rate_max: 등락률 최대값 (%, 예: 10 = 10% 이하 상승)
 
-모든 조건은 AND 처리됩니다.""",
+2. 거래량 조건:
+   - volume_change_min: 전날대비 거래량 증가율 (%, 예: 300 = 300% 이상 증가)
+   - volume_min: 최소 거래량 (주 단위, 예: 20000000 = 2천만주 이상)
+
+3. 주가 조건:
+   - price_min: 최소 종가 (원, 예: 100000 = 10만원 이상)
+   - price_max: 최대 종가 (원, 예: 200000 = 20만원 이하)
+
+4. 시장 구분:
+   - market: 시장 (KOSPI/KOSDAQ/ALL, 기본값: ALL)
+
+== 복합 조건 사용법 ==
+여러 조건을 동시에 사용하면 모든 조건을 만족하는 종목만 반환됩니다 (AND 연산).
+
+실제 사용 예시:
+1. "2024-09-25에 등락률이 2% 이상인 종목"
+   → date=2024-09-25&change_rate_min=2
+
+2. "2024-09-25에 거래량이 전날대비 300% 이상 증가한 종목"
+   → date=2024-09-25&volume_change_min=300
+
+3. "2024-09-25에 등락률이 2% 이상이면서 거래량이 전날대비 300% 이상 증가한 종목"
+   → date=2024-09-25&change_rate_min=2&volume_change_min=300
+
+4. "2024-09-25에 5%~10% 상승하고 거래량 500% 증가하고 주가 5만원~15만원인 종목"
+   → date=2024-09-25&change_rate_min=5&change_rate_max=10&volume_change_min=500&price_min=50000&price_max=150000
+
+== 중요 ==
+- 단일 종목 조회 불가 (예: "삼성전자 종가는?" → simple API 사용)
+- 기술적 분석 불가 (예: "RSI 과매수 종목" → signal API 사용)
+- 모든 조건은 AND 연산으로 처리되어 모든 조건을 동시에 만족하는 종목만 반환
+- 파라미터는 &로 연결하여 복합 조건 구성""",
         version="1.0.0"
     )
     temp_app.include_router(query_router, tags=["Filter"])

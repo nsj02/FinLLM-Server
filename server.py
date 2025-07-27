@@ -115,8 +115,29 @@ def get_simple_openapi():
     from fastapi import FastAPI
     
     temp_app = FastAPI(
-        title="간단 조회 API",
-        description="한국 주식 간단 조회 (개별 종목, 시장 통계, 순위)",
+        title="한국 주식시장 간단 조회 API",
+        description="""이 API는 한국 주식시장의 기본적인 정보 조회를 위한 단일 엔드포인트를 제공합니다.
+
+== 엔드포인트 ==
+GET /query/simple
+
+== 주요 기능별 사용법 ==
+
+1. 개별 종목 가격 조회
+질문 유형: "[종목명]의 [날짜] [가격타입]은?"
+파라미터: stock={종목명}&date={날짜}&price_type={가격타입}
+
+2. 시장 통계 조회  
+질문 유형: "[날짜]에 상승한/하락한/거래된 종목은 몇 개?" 또는 "[날짜] 거래대금은?" 또는 "[날짜] 지수는?"
+파라미터: date={날짜}&stat_type={통계타입}&market={시장}
+
+3. 시장 순위 조회
+질문 유형: "[날짜]에서 [시장]에서 [기준] 높은/많은 종목 [개수]개는?"
+파라미터: date={날짜}&rank_type={순위기준}&market={시장}&direction={방향}&limit={개수}
+
+== 중요 ==
+- 복합조건 검색 불가 (예: "5% 이상 상승하고 거래량 많은 종목" → filters API 사용)
+- 기술적 분석 불가 (예: "RSI 과매수 종목" → signal API 사용)""",
         version="1.0.0"
     )
     temp_app.include_router(query_router, tags=["Simple"])
@@ -151,8 +172,32 @@ def get_filter_openapi():
     from fastapi import FastAPI
     
     temp_app = FastAPI(
-        title="조건 검색 API",
-        description="한국 주식 조건 검색 (복합 조건 필터링)",
+        title="한국 주식 조건검색 필터 API",
+        description="""이 API는 한국 주식시장에서 복합 조건을 만족하는 종목을 검색하기 위한 단일 엔드포인트를 제공합니다.
+
+== 엔드포인트 ==
+GET /query/filter
+
+== 주요 기능 ==
+복합 조건을 통한 종목 필터링
+질문 유형: "[날짜]에 [조건들]을 만족하는 종목은?"
+
+== 조건 파라미터 ==
+- volume_change_min: 전날대비 거래량 증가율 최소값 (%)
+- volume_min: 최소 거래량 (주 단위)
+- change_rate_min: 등락률 최소값 (%)
+- change_rate_max: 등락률 최대값 (%)
+- price_min: 최소 종가 (원 단위)
+- price_max: 최대 종가 (원 단위)
+
+== 사용 예시 ==
+- "5% 이상 상승한 종목은?" → change_rate_min=5
+- "거래량이 300% 이상 증가한 종목은?" → volume_change_min=300
+- "5% 이상 상승하고 거래량이 300% 이상 증가한 종목은?" → change_rate_min=5&volume_change_min=300
+
+== 중요 ==
+- 단순 가격조회 불가 (예: "삼성전자 종가는?" → simple API 사용)
+- 기술적 분석 불가 (예: "RSI 과매수 종목" → signal API 사용)""",
         version="1.0.0"
     )
     temp_app.include_router(query_router, tags=["Filter"])
@@ -187,8 +232,33 @@ def get_signal_openapi():
     from fastapi import FastAPI
     
     temp_app = FastAPI(
-        title="기술적 신호 API",
-        description="한국 주식 기술적 신호 (RSI, 볼린저밴드, 거래량 급증 등)",
+        title="한국 주식 기술적분석 신호 API",
+        description="""이 API는 한국 주식시장에서 기술적 지표 기반 신호를 분석하기 위한 단일 엔드포인트를 제공합니다.
+
+== 엔드포인트 ==
+GET /query/signal
+
+== 주요 기능 ==
+기술적 지표 신호 분석
+질문 유형: "[날짜]에 [기술적지표] [조건]인 종목은?"
+
+== 지원 기술적 지표 ==
+- RSI: 과매수(70이상)/과매도(30이하) 신호
+- 볼린저밴드: 상단/하단 돌파 신호
+- 이동평균선: 골든크로스/데드크로스 신호
+- MACD: 매수/매도 신호
+- 거래량: 평균대비 급증 신호
+- 돌파매매: 저항선/지지선 돌파 신호
+
+== 사용 예시 ==
+- "RSI 70 이상 과매수 종목은?" → RSI 과매수 신호
+- "볼린저밴드 하단 터치 종목은?" → 볼린저밴드 하단 돌파
+- "거래량 평균대비 3배 급증 종목은?" → 거래량 급증 신호
+- "골든크로스 발생 종목은?" → 이동평균선 골든크로스
+
+== 중요 ==
+- 단순 가격조회 불가 (예: "삼성전자 종가는?" → simple API 사용)
+- 조건필터링 불가 (예: "5% 이상 상승한 종목" → filter API 사용)""",
         version="1.0.0"
     )
     temp_app.include_router(query_router, tags=["Signal"])

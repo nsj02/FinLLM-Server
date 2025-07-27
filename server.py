@@ -191,11 +191,17 @@ GET /query/filter
 - price_max: 최대 종가 (원 단위)
 
 == 사용 예시 ==
+단일 조건:
 - "5% 이상 상승한 종목은?" → change_rate_min=5
 - "거래량이 300% 이상 증가한 종목은?" → volume_change_min=300
+
+복합 조건 (여러 파라미터 동시 사용 필수):
 - "5% 이상 상승하고 거래량이 300% 이상 증가한 종목은?" → change_rate_min=5&volume_change_min=300
+- "2% 상승하면서 거래량 전날대비 300% 증가한 종목은?" → change_rate_min=2&volume_change_min=300
+- "등락률 3% 이상이고 거래량 200% 증가한 종목은?" → change_rate_min=3&volume_change_min=200
 
 == 중요 ==
+- "그리고", "이면서", "동시에" 등의 표현이 있으면 반드시 여러 파라미터를 함께 사용
 - 단순 가격조회 불가 (예: "삼성전자 종가는?" → simple API 사용)
 - 기술적 분석 불가 (예: "RSI 과매수 종목" → signal API 사용)""",
         version="1.0.0"

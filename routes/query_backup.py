@@ -1,4 +1,4 @@
-# routes/query.py - 통합 쿼리 API 라우터 (수정된 버전)
+# routes/query.py - 통합 쿼리 API 라우터
 
 from fastapi import APIRouter, HTTPException, Query, Depends
 from sqlalchemy.orm import Session as SQLSession
@@ -48,30 +48,41 @@ def simple_query(
     
     # 시장 순위 조회  
     rank_type: Optional[str] = Query(None, description="순위 기준 (change_rate/volume/close_price)", examples=["change_rate"]),
-    direction: str = Query("desc", description="정렬 방향 (desc/asc)", examples=["desc"]),
+    direction: str = Query("desc", description="정렬 방향 (desc=높은순/asc=낮은순)", examples=["desc"]),
+    limit: int = Query(5, description="조회 개수", examples=[5]),
     
     # 공통 파라미터
-    market: str = Query("KOSPI", description="시장 (KOSPI/KOSDAQ/ALL)", examples=["KOSPI"]),
-    limit: int = Query(5, description="조회 개수", examples=[5]),
+    market: str = Query("ALL", description="시장 (KOSPI/KOSDAQ/ALL)", examples=["ALL"]),
     db: SQLSession = Depends(get_db)
 ):
-    """Simple Queries 처리 - 개별 종목, 시장 통계, 순위 조회"""
+    """Simple Queries 처리 - 단일 종목 조회, 시장 통계, 순위 조회"""
     try:
-        # 1. 개별 종목 가격 조회
-        if stock and date:
-            query_date = parse_date(date).date()
-            stock_obj = find_stock_by_name(db, stock, market)
+        if not date:
+            raise HTTPException(status_code=400, detail="date 파라미터가 필요합니다")
             
-            if not stock_obj:
+        query_date = parse_date(date).date()
+        
+        # 1. 종목 가격 조회
+        if stock:
+            found_stock = find_stock_by_name(db, stock, market)
+            if not found_stock:
                 raise HTTPException(status_code=404, detail=f"종목을 찾을 수 없습니다: {stock}")
             
             price_data = db.query(DailyPrice).filter(
-                DailyPrice.stock_id == stock_obj.stock_id,
+                DailyPrice.stock_id == found_stock.stock_id,
                 DailyPrice.date == query_date
             ).first()
             
             if not price_data:
-                raise HTTPException(status_code=404, detail=f"가격 데이터 없음: {stock} ({date})")
+                return {
+                    "query_type": "stock_price",
+                    "stock_name": found_stock.name,
+                    "symbol": found_stock.symbol,
+                    "market": found_stock.market,
+                    "date": date,
+                    "message": "해당 날짜 데이터 없음",
+                    "formatted_answer": "해당 날짜 데이터 없음"
+                }
             
             price_map = {
                 "open": price_data.open_price,
@@ -81,47 +92,43 @@ def simple_query(
                 "change_rate": price_data.change_rate
             }
             
-            value = price_map.get(price_type, price_data.close_price)
+            requested_price = price_map.get(price_type, price_data.close_price)
             
             if price_type == "change_rate":
-                formatted_answer = f"{value:+.2f}%" if value else "0.00%"
-            elif value == 0:
-                formatted_answer = "0원"
+                formatted_price = f"{requested_price:.2f}%"
             else:
-                formatted_answer = f"{value:,.0f}원" if value else "데이터 없음"
+                formatted_price = f"{requested_price:,.0f}원"
             
             return {
-                "query_type": "individual_price",
-                "stock": stock,
+                "query_type": "stock_price",
+                "stock_name": found_stock.name,
+                "symbol": found_stock.symbol,
+                "market": found_stock.market,
                 "date": date,
                 "price_type": price_type,
-                "value": value,
-                "formatted_answer": formatted_answer
+                "price": requested_price,
+                "formatted_answer": formatted_price
             }
         
         # 2. 시장 통계 조회
-        elif stat_type and date:
-            query_date = parse_date(date).date()
-            
+        elif stat_type:
             if stat_type == "index":
-                # 지수 조회
-                if market == "ALL":
-                    raise HTTPException(status_code=400, detail="지수 조회시에는 특정 시장(KOSPI/KOSDAQ)을 선택해야 합니다")
-                
-                index_data = db.query(MarketIndex).filter(
+                # KOSPI/KOSDAQ 지수 조회
+                target_market = "KOSPI" if market == "ALL" else market
+                market_index = db.query(MarketIndex).filter(
                     MarketIndex.date == query_date,
-                    MarketIndex.market == market
+                    MarketIndex.market == target_market
                 ).first()
                 
-                if not index_data:
-                    raise HTTPException(status_code=404, detail=f"{market} 지수 데이터 없음: {date}")
+                if not market_index:
+                    raise HTTPException(status_code=404, detail=f"{target_market} 지수 데이터 없음: {date}")
                 
                 return {
                     "query_type": "market_index",
                     "date": date,
-                    "market": market,
-                    "value": index_data.index_value,
-                    "formatted_answer": f"{index_data.index_value:,.2f}"
+                    "market": target_market,
+                    "index": market_index.close_index,
+                    "formatted_answer": f"{market_index.close_index:.2f}"
                 }
             
             else:
@@ -134,8 +141,11 @@ def simple_query(
                     
                     kosdaq_stat = db.query(MarketStat).filter(
                         MarketStat.date == query_date,
-                        MarketStat.market == "KOSDAQ"
+                        MarketStat.market == "KOSDAQ"  
                     ).first()
+                    
+                    if not kospi_stat and not kosdaq_stat:
+                        raise HTTPException(status_code=404, detail=f"시장 통계 데이터 없음: {date}")
                     
                     rising = (kospi_stat.rising_stocks if kospi_stat else 0) + (kosdaq_stat.rising_stocks if kosdaq_stat else 0)
                     falling = (kospi_stat.falling_stocks if kospi_stat else 0) + (kosdaq_stat.falling_stocks if kosdaq_stat else 0)
@@ -184,7 +194,7 @@ def simple_query(
             target_market = market if market != "ALL" else "KOSPI"
             
             query = db.query(DailyPrice, Stock).join(Stock, DailyPrice.stock_id == Stock.stock_id).filter(
-                DailyPrice.date == parse_date(date).date(),
+                DailyPrice.date == query_date,
                 Stock.market == target_market,
                 Stock.is_active == True
             )
@@ -194,7 +204,6 @@ def simple_query(
                 "volume": DailyPrice.volume,
                 "close_price": DailyPrice.close_price
             }
-            
             sort_column = sort_columns.get(rank_type, DailyPrice.change_rate)
             
             if direction == "desc":
@@ -204,38 +213,53 @@ def simple_query(
             
             results = query.limit(limit).all()
             
-            stock_list = []
-            for price, stock in results:
-                if rank_type == "volume":
-                    stock_list.append(f"{stock.name} ({price.volume:,}주)")
-                elif rank_type == "change_rate":
-                    stock_list.append(f"{stock.name}")
+            if not results:
+                raise HTTPException(status_code=404, detail=f"{target_market} 시장 데이터 없음: {date}")
+            
+            rankings = []
+            for i, (price, stock) in enumerate(results, 1):
+                ranking_value = getattr(price, rank_type)
+                
+                if rank_type == "change_rate":
+                    formatted_value = f"{ranking_value:.2f}%"
+                elif rank_type == "volume":
+                    formatted_value = f"({ranking_value:,}주)"
                 else:
-                    stock_list.append(f"{stock.name}")
+                    formatted_value = f"{ranking_value:,}원"
+                
+                rankings.append({
+                    "rank": i,
+                    "name": stock.name,
+                    "symbol": stock.symbol,
+                    "value": ranking_value,
+                    "formatted": f"{stock.name} {formatted_value}" if rank_type == "volume" else stock.name
+                })
+            
+            simple_list = [item["formatted"] for item in rankings]
             
             return {
-                "query_type": "market_ranking",
+                "query_type": "market_rankings",
                 "date": date,
                 "market": target_market,
                 "rank_type": rank_type,
-                "direction": direction,
-                "limit": limit,
-                "results": stock_list,
-                "formatted_answer": ", ".join(stock_list)
+                "rankings": rankings,
+                "formatted_answer": ", ".join(simple_list)
             }
         
         else:
-            raise HTTPException(status_code=400, detail="올바른 파라미터를 제공해주세요")
-        
+            raise HTTPException(status_code=400, detail="stock, stat_type, rank_type 중 하나는 필수입니다")
+            
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 # =============================================================================
-# 2. Filter Queries API (완전 구현)
+# 2. Conditional Queries API  
 # =============================================================================
 
-@router.get("/query/filter", summary="조건 검색 (Filter Queries)")
-def filter_query(
+@router.get("/query/filter", summary="조건 검색 (Conditional Queries)")
+def conditional_query(
     date: str = Query(..., description="조회 날짜 (YYYY-MM-DD)", examples=["2025-05-14"]),
     
     # 거래량 조건
@@ -255,9 +279,10 @@ def filter_query(
     limit: int = Query(50, description="조회 개수", examples=[20]),
     db: SQLSession = Depends(get_db)
 ):
-    """Filter Queries 처리 - 복합 조건 검색"""
+    """Conditional Queries 처리 - 복합 조건 검색"""
     try:
         query_date = parse_date(date).date()
+        prev_date = query_date - timedelta(days=1)
         
         # 기본 쿼리
         base_query = db.query(DailyPrice, Stock).join(Stock, DailyPrice.stock_id == Stock.stock_id).filter(
@@ -269,56 +294,54 @@ def filter_query(
         if market != "ALL":
             base_query = base_query.filter(Stock.market == market)
         
+        # 등락률 조건
+        if change_rate_min is not None:
+            base_query = base_query.filter(DailyPrice.change_rate >= change_rate_min)
+        if change_rate_max is not None:
+            base_query = base_query.filter(DailyPrice.change_rate <= change_rate_max)
+        
+        # 가격 조건
+        if price_min is not None:
+            base_query = base_query.filter(DailyPrice.close_price >= price_min)
+        if price_max is not None:
+            base_query = base_query.filter(DailyPrice.close_price <= price_max)
+        
+        # 절대 거래량 조건
+        if volume_min is not None:
+            base_query = base_query.filter(DailyPrice.volume >= volume_min)
+        
         results = []
         
-        for price, stock in base_query.all():
-            # 등락률 조건 체크
-            if change_rate_min is not None and (price.change_rate is None or price.change_rate < change_rate_min):
-                continue
-            if change_rate_max is not None and (price.change_rate is None or price.change_rate > change_rate_max):
-                continue
-            
-            # 가격 조건 체크
-            if price_min is not None and (price.close_price is None or price.close_price < price_min):
-                continue
-            if price_max is not None and (price.close_price is None or price.close_price > price_max):
-                continue
-            
-            # 거래량 절대값 조건 체크
-            if volume_min is not None and (price.volume is None or price.volume < volume_min):
-                continue
-            
-            # 거래량 변화율 조건 체크
+        for current_price, stock in base_query.all():
+            # 거래량 변화율 조건 확인
             if volume_change_min is not None:
-                prev_date = query_date - timedelta(days=1)
                 prev_price = db.query(DailyPrice).filter(
-                    DailyPrice.stock_id == price.stock_id,
+                    DailyPrice.stock_id == stock.stock_id,
                     DailyPrice.date == prev_date
                 ).first()
                 
-                if not prev_price or prev_price.volume == 0:
-                    continue
-                
-                volume_change = ((price.volume - prev_price.volume) / prev_price.volume) * 100
-                if volume_change < volume_change_min:
+                if prev_price and prev_price.volume > 0:
+                    volume_change = ((current_price.volume - prev_price.volume) / prev_price.volume) * 100
+                    if volume_change < volume_change_min:
+                        continue
+                else:
                     continue
             
-            # 조건을 만족하는 종목 추가
             results.append({
                 "name": stock.name,
                 "symbol": stock.symbol,
                 "market": stock.market,
-                "close_price": price.close_price,
-                "change_rate": price.change_rate,
-                "volume": price.volume
+                "close_price": current_price.close_price,
+                "change_rate": current_price.change_rate,
+                "volume": current_price.volume
             })
         
         # 등락률 기준 정렬
-        results.sort(key=lambda x: x["change_rate"] or 0, reverse=True)
+        results.sort(key=lambda x: x["change_rate"], reverse=True)
         results = results[:limit]
         
+        # 종목명만 추출
         stock_names = [item["name"] for item in results]
-        formatted_answer = ", ".join(stock_names) if stock_names else "조건에 맞는 종목 없음"
         
         return {
             "query_type": "conditional_filter",
@@ -334,14 +357,14 @@ def filter_query(
             },
             "results": results,
             "stock_names": stock_names,
-            "formatted_answer": formatted_answer
+            "formatted_answer": ", ".join(stock_names) if stock_names else "조건에 맞는 종목 없음"
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 # =============================================================================
-# 3. Signal Queries API (완전 구현)
+# 3. Signal Queries API
 # =============================================================================
 
 @router.get("/query/signal", summary="기술적 신호 (Signal Queries)")
@@ -350,33 +373,31 @@ def signal_query(
     date: Optional[str] = Query(None, description="조회 날짜 (YYYY-MM-DD)", examples=["2025-01-20"]),
     signal_type: str = Query(..., description="신호 유형", examples=["rsi_overbought"]),
     
-    # RSI 파라미터
-    threshold: Optional[float] = Query(None, description="RSI 임계값 (70=과매수, 30=과매도)", examples=[70]),
+    # RSI 관련
+    threshold: Optional[float] = Query(None, description="RSI/기타 임계값", examples=[70]),
     
-    # 거래량 급증 파라미터
+    # 거래량 급증 관련
     volume_multiplier: Optional[float] = Query(None, description="거래량 배수 (예: 5.0 = 500%)", examples=[5.0]),
     
-    # 이동평균 돌파 파라미터
-    ma_period: Optional[int] = Query(None, description="이동평균 기간 (5/20/60일)", examples=[20]),
-    breakout_percent: Optional[float] = Query(None, description="돌파 비율 (%)", examples=[10.0]),
+    # 이동평균 관련
+    ma_period: Optional[int] = Query(None, description="이동평균 기간", examples=[20]),
+    breakout_percent: Optional[float] = Query(None, description="돌파 비율 (%)", examples=[3.0]),
     
-    # 크로스 신호 파라미터 (기간별 횟수 조회용)
-    stock: Optional[str] = Query(None, description="특정 종목명 (크로스 횟수 조회용)", examples=["현대백화점"]),
+    # 기간 관련
+    period: int = Query(20, description="기간 (일)", examples=[20]),
+    limit: int = Query(15, description="조회 개수", examples=[15]),
+    
+    # 크로스 신호용 파라미터
+    stock: Optional[str] = Query(None, description="특정 종목 (크로스 횟수 조회용)", examples=["현대백화점"]),
     start_date: Optional[str] = Query(None, description="시작 날짜 (크로스 횟수 조회용)", examples=["2024-06-01"]),
     end_date: Optional[str] = Query(None, description="종료 날짜 (크로스 횟수 조회용)", examples=["2025-06-30"]),
     
-    # 공통 파라미터
-    period: int = Query(20, description="분석 기간 (일)", examples=[20]),
-    limit: int = Query(15, description="조회 개수", examples=[15]),
     db: SQLSession = Depends(get_db)
 ):
     """Signal Queries 처리 - 기술적 분석 신호"""
     try:
-        # 크로스 횟수 조회 (특정 종목의 기간별 크로스 발생 횟수)
-        if signal_type.endswith("_count") or (stock and start_date and end_date):
-            if not stock or not start_date or not end_date:
-                raise HTTPException(status_code=400, detail="크로스 횟수 조회에는 stock, start_date, end_date가 모두 필요합니다")
-            
+        # 크로스 횟수 조회 (특정 종목 + 기간)
+        if signal_type.endswith("_count") and stock and start_date and end_date:
             stock_obj = find_stock_by_name(db, stock)
             if not stock_obj:
                 raise HTTPException(status_code=404, detail=f"종목을 찾을 수 없습니다: {stock}")
@@ -384,60 +405,65 @@ def signal_query(
             start_dt = parse_date(start_date).date()
             end_dt = parse_date(end_date).date()
             
-            # 해당 기간의 기술적 지표 데이터 조회
+            # 기술적 지표 데이터 조회 (기간 내)
             tech_data = db.query(TechnicalIndicator).filter(
                 TechnicalIndicator.stock_id == stock_obj.stock_id,
-                TechnicalIndicator.date.between(start_dt, end_dt),
+                TechnicalIndicator.date >= start_dt,
+                TechnicalIndicator.date <= end_dt,
                 TechnicalIndicator.ma5.isnot(None),
                 TechnicalIndicator.ma20.isnot(None)
             ).order_by(TechnicalIndicator.date).all()
-            
-            if len(tech_data) < 2:
-                return {
-                    "query_type": "cross_count",
-                    "stock": stock,
-                    "start_date": start_date,
-                    "end_date": end_date,
-                    "golden_cross_count": 0,
-                    "dead_cross_count": 0,
-                    "formatted_answer": "데이터 부족으로 크로스 신호를 분석할 수 없습니다"
-                }
             
             golden_cross_count = 0
             dead_cross_count = 0
             
             for i in range(1, len(tech_data)):
-                prev_data = tech_data[i-1]
-                curr_data = tech_data[i]
+                prev = tech_data[i-1]
+                curr = tech_data[i]
                 
-                # 이전: MA5 <= MA20, 현재: MA5 > MA20 => 골든크로스
-                if (prev_data.ma5 <= prev_data.ma20 and curr_data.ma5 > curr_data.ma20):
+                # 골든크로스: 5일선이 20일선을 상향 돌파
+                if prev.ma5 <= prev.ma20 and curr.ma5 > curr.ma20:
                     golden_cross_count += 1
-                # 이전: MA5 >= MA20, 현재: MA5 < MA20 => 데드크로스
-                elif (prev_data.ma5 >= prev_data.ma20 and curr_data.ma5 < curr_data.ma20):
+                
+                # 데드크로스: 5일선이 20일선을 하향 돌파
+                if prev.ma5 >= prev.ma20 and curr.ma5 < curr.ma20:
                     dead_cross_count += 1
             
             if signal_type == "golden_cross_count":
-                formatted_answer = f"{golden_cross_count}번"
+                return {
+                    "query_type": "signal_count",
+                    "stock": stock,
+                    "signal_type": signal_type,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "count": golden_cross_count,
+                    "formatted_answer": f"{golden_cross_count}번"
+                }
             elif signal_type == "dead_cross_count":
-                formatted_answer = f"{dead_cross_count}번"
-            else:
-                formatted_answer = f"데드크로스 {dead_cross_count}번, 골든크로스 {golden_cross_count}번"
-            
-            return {
-                "query_type": "cross_count",
-                "stock": stock,
-                "start_date": start_date,
-                "end_date": end_date,
-                "signal_type": signal_type,
-                "golden_cross_count": golden_cross_count,
-                "dead_cross_count": dead_cross_count,
-                "formatted_answer": formatted_answer
-            }
+                return {
+                    "query_type": "signal_count", 
+                    "stock": stock,
+                    "signal_type": signal_type,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "count": dead_cross_count,
+                    "formatted_answer": f"{dead_cross_count}번"
+                }
+            else:  # 통합 (데드크로스 + 골든크로스)
+                return {
+                    "query_type": "signal_count",
+                    "stock": stock,
+                    "signal_type": signal_type,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "dead_cross": dead_cross_count,
+                    "golden_cross": golden_cross_count,
+                    "formatted_answer": f"데드크로스 {dead_cross_count}번, 골든크로스 {golden_cross_count}번"
+                }
         
-        # 일반 신호 조회 (특정 날짜)
+        # 일반 신호 조회 (날짜 필수)
         if not date:
-            raise HTTPException(status_code=400, detail="일반 신호 조회에는 date 파라미터가 필요합니다")
+            raise HTTPException(status_code=400, detail="date parameter required for signal detection")
         
         query_date = parse_date(date).date()
         
@@ -452,12 +478,12 @@ def signal_query(
             )
             
             if signal_type == "rsi_overbought":
-                threshold = threshold or 70
-                query = base_query.filter(TechnicalIndicator.rsi >= threshold)
+                threshold_val = threshold or 70
+                query = base_query.filter(TechnicalIndicator.rsi >= threshold_val)
                 order_by = desc(TechnicalIndicator.rsi)
             elif signal_type == "rsi_oversold":
-                threshold = threshold or 30
-                query = base_query.filter(TechnicalIndicator.rsi <= threshold)
+                threshold_val = threshold or 30
+                query = base_query.filter(TechnicalIndicator.rsi <= threshold_val)
                 order_by = asc(TechnicalIndicator.rsi)
             
             results = query.order_by(order_by).limit(limit).all()
@@ -474,10 +500,9 @@ def signal_query(
             answer_list = [item["formatted"] for item in formatted_results]
             
         elif signal_type == "volume_surge":
-            # 거래량 급증 신호 (20일 평균 대비)
-            multiplier = volume_multiplier or 1.0  # 기본값 100% (1배)
+            # 거래량 급증 신호
+            multiplier = volume_multiplier or 1.0
             
-            # 현재 날짜 데이터
             current_query = db.query(DailyPrice, Stock).join(
                 Stock, DailyPrice.stock_id == Stock.stock_id
             ).filter(
@@ -494,11 +519,11 @@ def signal_query(
                     DailyPrice.date >= query_date - timedelta(days=period)
                 ).all()
                 
-                if len(avg_volume_query) >= 10:  # 최소 10일 데이터
+                if len(avg_volume_query) >= 10:
                     avg_volume = sum(p.volume for p in avg_volume_query) / len(avg_volume_query)
                     if avg_volume > 0:
                         surge_ratio = (current_price.volume / avg_volume) * 100
-                        if surge_ratio >= multiplier * 100:  # multiplier를 퍼센트로 변환
+                        if surge_ratio >= multiplier * 100:
                             results.append({
                                 "name": stock.name,
                                 "symbol": stock.symbol,
@@ -506,15 +531,13 @@ def signal_query(
                                 "formatted": f"{stock.name}({surge_ratio:.0f}%)"
                             })
             
-            # 급증률 기준 정렬
             results.sort(key=lambda x: x["surge_ratio"], reverse=True)
             results = results[:limit]
-            
             formatted_results = results
             answer_list = [item["formatted"] for item in results]
             
         elif signal_type.startswith("bollinger_"):
-            # 볼린저 밴드 신호
+            # 볼린저밴드 신호
             base_query = db.query(TechnicalIndicator, Stock).join(
                 Stock, TechnicalIndicator.stock_id == Stock.stock_id
             ).filter(
@@ -529,7 +552,6 @@ def signal_query(
                 query = base_query.filter(TechnicalIndicator.bb_lower_touch == True)
             
             results = query.limit(limit).all()
-            
             formatted_results = []
             for tech, stock in results:
                 formatted_results.append({
@@ -542,10 +564,9 @@ def signal_query(
             
         elif signal_type == "ma_breakout":
             # 이동평균선 돌파 신호
-            ma_period_val = ma_period or 20  # 기본 20일
-            breakout_percent_val = breakout_percent or 3.0  # 기본 3% 이상
+            ma_period_val = ma_period or 20
+            breakout_percent_val = breakout_percent or 3.0
             
-            # 현재 날짜의 기술적 지표와 가격 데이터 조인
             query = db.query(TechnicalIndicator, DailyPrice, Stock).join(
                 DailyPrice, and_(
                     TechnicalIndicator.stock_id == DailyPrice.stock_id,
@@ -578,10 +599,8 @@ def signal_query(
                             "formatted": f"{stock.name}({deviation:.2f}%)"
                         })
             
-            # 돌파율 기준 정렬
             results.sort(key=lambda x: x["deviation"], reverse=True)
             results = results[:limit]
-            
             formatted_results = results
             answer_list = [item["formatted"] for item in results]
             
@@ -594,8 +613,6 @@ def signal_query(
             "signal_type": signal_type,
             "threshold": threshold,
             "volume_multiplier": volume_multiplier,
-            "ma_period": ma_period,
-            "breakout_percent": breakout_percent,
             "results": formatted_results,
             "formatted_answer": ", ".join(answer_list) if answer_list else "조건에 맞는 종목 없음"
         }

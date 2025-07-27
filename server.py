@@ -173,20 +173,15 @@ def get_filter_openapi():
     
     temp_app = FastAPI(
         title="한국 주식 조건검색 필터 API",
-        description="""복합 조건으로 종목 필터링 API
+        description="""종목 조건 검색 API
 
-**파라미터**
-- date: 조회날짜 (YYYY-MM-DD)
-- change_rate_min: 등락률 최소값(%)
-- volume_change_min: 거래량 전날대비 증가율(%)
-- volume_min: 최소 거래량(주)
-- price_min/max: 종가 범위(원)
+파라미터:
+date (필수), change_rate_min (등락률%), volume_change_min (거래량증가율%), volume_min (거래량), price_min/max (가격범위)
 
-**사용법**
-단일조건: "5% 상승" → change_rate_min=5
-복합조건: "2% 상승하고 거래량 300% 증가" → change_rate_min=2&volume_change_min=300
+예시:
+"2% 상승하고 거래량 300% 증가" → change_rate_min=2&volume_change_min=300
 
-모든 조건은 AND 처리됩니다.""",
+복합조건은 AND 처리""",
         version="1.0.0"
     )
     temp_app.include_router(query_router, tags=["Filter"])

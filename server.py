@@ -173,37 +173,20 @@ def get_filter_openapi():
     
     temp_app = FastAPI(
         title="한국 주식 조건검색 필터 API",
-        description="""이 API는 한국 주식시장에서 복합 조건을 만족하는 종목을 검색하기 위한 단일 엔드포인트를 제공합니다.
+        description="""복합 조건으로 종목 필터링 API
 
-== 엔드포인트 ==
-GET /query/filter
+**파라미터**
+- date: 조회날짜 (YYYY-MM-DD)
+- change_rate_min: 등락률 최소값(%)
+- volume_change_min: 거래량 전날대비 증가율(%)
+- volume_min: 최소 거래량(주)
+- price_min/max: 종가 범위(원)
 
-== 주요 기능 ==
-복합 조건을 통한 종목 필터링
-질문 유형: "[날짜]에 [조건들]을 만족하는 종목은?"
+**사용법**
+단일조건: "5% 상승" → change_rate_min=5
+복합조건: "2% 상승하고 거래량 300% 증가" → change_rate_min=2&volume_change_min=300
 
-== 조건 파라미터 ==
-- volume_change_min: 전날대비 거래량 증가율 최소값 (%)
-- volume_min: 최소 거래량 (주 단위)
-- change_rate_min: 등락률 최소값 (%)
-- change_rate_max: 등락률 최대값 (%)
-- price_min: 최소 종가 (원 단위)
-- price_max: 최대 종가 (원 단위)
-
-== 사용 예시 ==
-단일 조건:
-- "5% 이상 상승한 종목은?" → change_rate_min=5
-- "거래량이 300% 이상 증가한 종목은?" → volume_change_min=300
-
-복합 조건 (여러 파라미터 동시 사용 필수):
-- "5% 이상 상승하고 거래량이 300% 이상 증가한 종목은?" → change_rate_min=5&volume_change_min=300
-- "2% 상승하면서 거래량 전날대비 300% 증가한 종목은?" → change_rate_min=2&volume_change_min=300
-- "등락률 3% 이상이고 거래량 200% 증가한 종목은?" → change_rate_min=3&volume_change_min=200
-
-== 중요 ==
-- "그리고", "이면서", "동시에" 등의 표현이 있으면 반드시 여러 파라미터를 함께 사용
-- 단순 가격조회 불가 (예: "삼성전자 종가는?" → simple API 사용)
-- 기술적 분석 불가 (예: "RSI 과매수 종목" → signal API 사용)""",
+모든 조건은 AND 처리됩니다.""",
         version="1.0.0"
     )
     temp_app.include_router(query_router, tags=["Filter"])

@@ -6,7 +6,7 @@ services:
       dockerfile: Dockerfile
     container_name: finllm-api-server
     environment:
-      DATABASE_URL: postgresql://postgres:password@211.188.57.245:5432/finance_db
+      DATABASE_URL: mysql+pymysql://alstpdusMin:Alstpdus!!@finance-db.c36egosuec87.ap-northeast-2.rds.amazonaws.com:3306/stock_data
       API_SERVER_URL: http://0.0.0.0:8000
       PYTHONUNBUFFERED: 1
     ports:

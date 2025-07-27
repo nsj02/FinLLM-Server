@@ -13,24 +13,50 @@ router = APIRouter()
 
 def find_stock_by_name(db: SQLSession, stock_name: str, market: str = "ALL"):
     """종목명으로 종목 검색 (자동 매칭)"""
-    base_query = db.query(Stock).filter(Stock.is_active == True)
-    
-    if market != "ALL":
-        base_query = base_query.filter(Stock.market == market)
-    
-    # 정확한 매칭 우선
-    exact_match = base_query.filter(Stock.name == stock_name).first()
-    if exact_match:
-        return exact_match
-    
-    # 부분 매칭
-    partial_match = base_query.filter(
-        (Stock.name.contains(stock_name)) | 
-        (Stock.symbol.contains(stock_name)) |
-        (Stock.krx_code.contains(stock_name))
-    ).first()
-    
-    return partial_match
+    try:
+        base_query = db.query(Stock).filter(Stock.is_active == True)
+        
+        if market != "ALL":
+            base_query = base_query.filter(Stock.market == market)
+        
+        # 정확한 매칭 우선
+        exact_match = base_query.filter(Stock.name == stock_name).first()
+        if exact_match:
+            print(f"정확 매칭 성공: {stock_name} -> {exact_match.name}")
+            return exact_match
+        
+        # 심볼로도 찾기 (282720.KQ 같은 형태)
+        symbol_match = base_query.filter(Stock.symbol == stock_name).first()
+        if symbol_match:
+            print(f"심볼 매칭 성공: {stock_name} -> {symbol_match.name}")
+            return symbol_match
+            
+        # KRX 코드로도 찾기 (282720 같은 형태)
+        krx_match = base_query.filter(Stock.krx_code == stock_name).first()
+        if krx_match:
+            print(f"KRX 코드 매칭 성공: {stock_name} -> {krx_match.name}")
+            return krx_match
+        
+        # 부분 매칭
+        partial_match = base_query.filter(
+            (Stock.name.contains(stock_name)) | 
+            (Stock.symbol.contains(stock_name)) |
+            (Stock.krx_code.contains(stock_name))
+        ).first()
+        
+        if partial_match:
+            print(f"부분 매칭 성공: {stock_name} -> {partial_match.name}")
+            return partial_match
+        
+        # 전체 종목에서 유사한 이름 찾기
+        all_stocks = db.query(Stock.name).filter(Stock.is_active == True).all()
+        similar_names = [s.name for s in all_stocks if stock_name in s.name or s.name in stock_name]
+        print(f"검색 실패: '{stock_name}', 유사한 종목: {similar_names[:5]}")
+        
+        return None
+    except Exception as e:
+        print(f"종목 검색 중 오류: {e}")
+        return None
 
 # =============================================================================
 # 1. Simple Queries API
@@ -60,7 +86,29 @@ def simple_query(
         # 1. 개별 종목 가격 조회
         if stock and date:
             query_date = parse_date(date).date()
-            stock_obj = find_stock_by_name(db, stock, market)
+            
+            # 다양한 방법으로 종목 검색
+            stock_obj = None
+            
+            # 정확한 종목명 매칭
+            stock_obj = db.query(Stock).filter(Stock.name == stock, Stock.is_active == True).first()
+            
+            # 심볼 매칭 (282720.KQ 등)
+            if not stock_obj:
+                stock_obj = db.query(Stock).filter(Stock.symbol == stock, Stock.is_active == True).first()
+            
+            # KRX 코드 매칭 (282720 등)  
+            if not stock_obj:
+                stock_obj = db.query(Stock).filter(Stock.krx_code == stock, Stock.is_active == True).first()
+            
+            # 부분 매칭
+            if not stock_obj:
+                stock_obj = db.query(Stock).filter(
+                    (Stock.name.contains(stock)) | 
+                    (Stock.symbol.contains(stock)) |
+                    (Stock.krx_code.contains(stock)),
+                    Stock.is_active == True
+                ).first()
             
             if not stock_obj:
                 raise HTTPException(status_code=404, detail=f"종목을 찾을 수 없습니다: {stock}")
@@ -228,7 +276,10 @@ def simple_query(
             raise HTTPException(status_code=400, detail="올바른 파라미터를 제공해주세요")
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        error_detail = f"Error: {str(e)}\nTraceback: {traceback.format_exc()}"
+        print(f"API Error: {error_detail}")
+        raise HTTPException(status_code=500, detail=error_detail)
 
 # =============================================================================
 # 2. Filter Queries API (완전 구현)

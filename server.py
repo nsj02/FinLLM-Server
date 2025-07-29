@@ -11,6 +11,7 @@ from routes.enhanced import router as enhanced_router
 from routes.technical import router as technical_router
 from routes.filters import router as filters_router
 from routes.query import router as query_router
+from routes.financial import router as financial_router
 
 # ==============================================================================
 # 1. Pydantic 응답 모델(Response Models)
@@ -103,6 +104,9 @@ app.include_router(filters_router, tags=["Filters"])
 
 # 통합 쿼리 라우터 (신규)
 app.include_router(query_router, tags=["Query"])
+
+# 재무제표 분석 라우터 (신규)
+app.include_router(financial_router, tags=["Financial Analysis"])
 
 # ==============================================================================
 # 4. 핵심 OpenAPI JSON 엔드포인트 (ClovaStudio 스킬셋용)
@@ -260,6 +264,56 @@ GET /query/signal
         version=temp_app.version,
         description=temp_app.description,
         routes=[route for route in temp_app.routes if hasattr(route, 'path') and route.path == '/query/signal'],
+    )
+    
+    schema["openapi"] = "3.0.3"
+    schema["servers"] = [{"url": "http://49.50.133.71:8000"}]
+    
+    def remove_examples(schema_dict):
+        if isinstance(schema_dict, dict):
+            if 'examples' in schema_dict:
+                del schema_dict['examples']
+            for value in schema_dict.values():
+                remove_examples(value)
+        elif isinstance(schema_dict, list):
+            for item in schema_dict:
+                remove_examples(item)
+    
+    remove_examples(schema)
+    return schema
+
+@app.get("/openapi_financial.json")
+def get_financial_openapi():
+    """재무분석 API만 포함하는 OpenAPI 스키마"""
+    from fastapi.openapi.utils import get_openapi
+    from fastapi import FastAPI
+    
+    temp_app = FastAPI(
+        title="한국 기업 재무분석 API",
+        description="""한국 상장기업의 재무제표를 분석하는 API입니다.
+
+주요 기능:
+- 한국 상장기업 재무제표 데이터 수집 (DART 전자공시시스템 연동)
+- 전문 증권분석사 관점의 투자보고서 작성 지침 제공
+- Stock 테이블 기반 정확한 기업명 매칭
+- 최근 3년간 재무데이터 종합 분석
+
+사용법:
+회사명을 입력하면 해당 기업의 재무데이터와 전문 분석 지침을 반환합니다.
+
+지원 기업: 한국 거래소(KRX) 상장 전 종목
+분석 항목: 매출 성장률, 수익성, 재무 안정성, 투자 위험도, 투자 등급
+
+예시: company=삼성전자, company=SK하이닉스, company=네이버""",
+        version="1.0.0"
+    )
+    temp_app.include_router(financial_router, tags=["Financial"])
+    
+    schema = get_openapi(
+        title=temp_app.title,
+        version=temp_app.version,
+        description=temp_app.description,
+        routes=[route for route in temp_app.routes if hasattr(route, 'path') and route.path == '/financial/report'],
     )
     
     schema["openapi"] = "3.0.3"
